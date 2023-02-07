@@ -149,7 +149,8 @@ const ObaMap = () => {
                 }}
               >
                 <Marker
-                  key={'current_location'}
+                  // key={'current_location'}
+                  key={Math.random().toString(36).slice(2, 7)}
                   position={{ lat: coord.latitude, lng: coord.longitude }}
                   onClick={() => setActiveMarker(null)}
                   icon={{ url: marker_pink, scaledSize: new window.google.maps.Size(25, 38) }}
