@@ -1,6 +1,6 @@
 import React, { useState, useEffect, } from 'react'
 import { GoogleMap, useJsApiLoader, Marker, InfoWindow, } from '@react-google-maps/api';
-import axios from 'axios';
+// import axios from 'axios';
 import ajax from '../assets/ajax-loader.gif';
 import marker_orange from '../assets/orange@2x.png';
 import marker_pink from '../assets/pink@2x.png';
@@ -17,6 +17,8 @@ const settings = {
   ...defaultSettings,
 };
 
+const keyMap = "AIzaSyBt5L6L3JKtIocOLj_9dkgDmhDJYIAEQ9s";
+
 const ObaMap = () => {
   const [map, setMap] = React.useState(null)
   const [error, setError] = useState(null);
@@ -27,7 +29,7 @@ const ObaMap = () => {
 
   const { isLoaded } = useJsApiLoader({
     id: 'google-map-script',
-    googleMapsApiKey: "AIzaSyBt5L6L3JKtIocOLj_9dkgDmhDJYIAEQ9s"
+    googleMapsApiKey: keyMap,
   });
 
   const onChange = ({ coords, timestamp }) => {
@@ -63,26 +65,27 @@ const ObaMap = () => {
   }, []);
 
   const fetchData = async (lat = centerPosition.lat, lng = centerPosition.lng) => {
-    debugger
+    const url = `https://obaecommerce.hubin.io/iomanager/api/flows/execute/route/store-finder/stores-list?lat=${lat}&lon=${lng}`;
+    const options = {
+      method: 'GET',
+      headers: {
+        'x-wevo-access-token': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzZi10b2tlbi0yIiwidGVuYW50Ijoib2JhZWNvbW1lcmNlIiwidHlwZVRva2VuIjoiMiIsImV4cCI6MTY5NzA1MTYwMjM5N30.niQrh7kR8Pd_GavQDZqY4GlKcVlm6d5fxlkdi0p-qMA',
+      },
+    };
 
-    const result = await axios.get(
-      `https://obaecommerce.hubin.io/iomanager/api/flows/execute/route/store-finder/stores-list?lat=${lat}&lon=${lng}`,
-      {
-        headers: {
-          'x-wevo-access-token': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzZi10b2tlbi0yIiwidGVuYW50Ijoib2JhZWNvbW1lcmNlIiwidHlwZVRva2VuIjoiMiIsImV4cCI6MTY5NzA1MTYwMjM5N30.niQrh7kR8Pd_GavQDZqY4GlKcVlm6d5fxlkdi0p-qMA',
-        }
-      }
-    );
-    const dataFormated = result.data.map(element => {
-      const nameSlited = element.name.split('-')[1];
-      return {
-        nameFormated: nameSlited,
-        ...element,
-      }
-    })
+    fetch( url, options )
+      .then(response => response.json())
+      .then((result) => {
+        const dataFormated = result.map(element => {
+          const nameSlited = element.name.split('-')[1];
+          return {
+            nameFormated: nameSlited,
+            ...element,
+          }
+        });
+        setMarkers(dataFormated);
+      });
 
-    debugger
-    setMarkers(dataFormated);
   };
 
   const onUnmount = React.useCallback(() => setMap(null), []);
@@ -112,23 +115,43 @@ const ObaMap = () => {
           <input type="text" value={cep} onChange={(e) => setCep(e.target.value)} />
         </label>
         <button
-          onClick={() => {
-            axios(`https://viacep.com.br/ws/${cep}/json/`)
-              .then(res => {
-                let url = `https://maps.googleapis.com/maps/api/geocode/json?address=+${res.data.logradouro},+${res.data.localidade},+${res.data.uf}&key=AIzaSyBt5L6L3JKtIocOLj_9dkgDmhDJYIAEQ9s`;
-                axios.post(url)
+          onClick={() => {            
+            const isValidBRZip = zip => /^([\d]{2})([\d]{3})([\d]{3})|^[\d]{2}.[\d]{3}-[\d]{3}/.test(zip);
+            if (!isValidBRZip(cep)) {
+              // BUSCA POR ENDEREÇO
+              let url = `https://maps.googleapis.com/maps/api/geocode/json?address=+${cep}&key=${keyMap}`;
+                fetch(url, { method: 'POST' })
+                  .then(response => response.json())
                   .then(res => {
-                    if (res.status === 200) {
-                      setCenterPosition(res.data.results[0].geometry.location);
-                      map.panTo(res.data.results[0].geometry.location);
-                      debugger
-                      fetchData(res.data.results[0].geometry.location.lat, res.data.results[0].geometry.location.lng);
+                    debugger
+                    if (res.status === "OK") {
+                      setCenterPosition(res.results[0].geometry.location);
+                      map.panTo(res.results[0].geometry.location);
+                      fetchData(res.results[0].geometry.location.lat, res.results[0].geometry.location.lng);
                     } else if (res.status === "ZERO_RESULTS") {
-                      alert('Unable to process this location. Please revise location fields and try submitting again.')
+                      alert('Nenhuma unidade encontrada')
                     }
                   })
-              });
-
+            } else {
+              // BUSCA POR CEP
+              const txtFormated = cep.replace('-', '').trim();
+              fetch(`https://viacep.com.br/ws/${txtFormated}/json/`)
+                .then(response => response.json())
+                .then(res => {
+                  let url = `https://maps.googleapis.com/maps/api/geocode/json?address=+${res.logradouro},+${res.localidade},+${res.uf}&key=${keyMap}`;
+                  fetch(url, { method: 'POST' })
+                    .then(response => response.json())
+                    .then(res => {
+                      if (res.status === "OK") {
+                        setCenterPosition(res.results[0].geometry.location);
+                        map.panTo(res.results[0].geometry.location);
+                        fetchData(res.results[0].geometry.location.lat, res.results[0].geometry.location.lng);
+                      } else if (res.status === "ZERO_RESULTS") {
+                        alert('Nenhuma unidade encontrada')
+                      }
+                    })
+                });
+            }
           }}
         >Atualizar</button>
       </div>
